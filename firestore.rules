@@ -1,0 +1,30 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // users: setiap user hanya bisa baca/tulis dokumennya sendiri
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // history: hanya pemilik data yang boleh baca/tulis
+    match /history/{docId} {
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+      allow update, delete: if false; // riwayat bersifat append-only
+    }
+
+    // training_sessions: sama seperti history
+    match /training_sessions/{docId} {
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+      allow update, delete: if false;
+    }
+
+    // user_stats: ID dokumen = uid, relasi 1:1
+    match /user_stats/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}
