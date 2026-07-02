@@ -158,9 +158,9 @@ function main() {
   const bestK = 5; // standard K
   console.log(`\n### Top Confused Pairs for K = ${bestK} ###`);
   const confusion: Record<string, Record<string, number>> = {};
-  classes.forEach((c) => {
+  classes.forEach((c: string) => {
     confusion[c] = {};
-    classes.forEach((pred) => {
+    classes.forEach((pred: string) => {
       confusion[c][pred] = 0;
     });
   });
