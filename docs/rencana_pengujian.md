@@ -1,0 +1,28 @@
+# Rencana Pengujian Sistem (Rencana Uji)
+
+Dokumen ini berisi rencana pengujian fungsional dan non-fungsional untuk sistem klasifikasi huruf/alfabet Bahasa Isyarat Indonesia (BISINDO) secara *real-time* menggunakan MediaPipe Hands, K-Nearest Neighbor (KNN), dan Firebase.
+
+## Tabel Rencana Pengujian
+
+| Kelas Uji | Kode Butir Uji | Nama Butir Uji | Aktor | Hasil yang Diharapkan |
+| :--- | :--- | :--- | :--- | :--- |
+| **Autentikasi Pengguna** | BU-AUTH-01 | Registrasi akun baru menggunakan email dan kata sandi | Calon Pengguna | Sistem berhasil membuat kredensial baru, mengarahkan pengguna ke halaman *dashboard*, dan menginisialisasi dokumen pengguna baru di Cloud Firestore (`users/{uid}`). |
+| | BU-AUTH-02 | Masuk (*login*) menggunakan akun Google | Pengguna | Sistem melakukan otentikasi via Google, mengarahkan ke halaman *dashboard*, serta menyinkronkan profil data pengguna di Firestore. |
+| | BU-AUTH-03 | Masuk (*login*) menggunakan kata sandi yang salah | Pengguna | Sistem menolak proses masuk, menampilkan pesan galat (*error message*) yang informatif bagi pengguna, dan tetap berada pada halaman *login*. |
+| | BU-AUTH-04 | Proteksi rute halaman terproteksi (*route guarding*) | Pengguna (tanpa login) | Sistem menolak akses langsung pengguna yang belum terautentikasi ke halaman internal (*dashboard*, deteksi, latihan, riwayat) dan mengarahkannya kembali ke halaman *login*. |
+| **Deteksi Bahasa Isyarat Real-time** | BU-DET-01 | Pemuatan otomatis model klasifikasi KNN dan MediaPipe Hands | Pengguna | Sistem memuat data latih dari IndexedDB lokal atau model pra-latih secara otomatis ke memori browser klien sehingga status siap deteksi aktif. |
+| | BU-DET-02 | Deteksi huruf isyarat BISINDO satu tangan (misal: Huruf L) | Pengguna | Kamera menangkap citra tangan, MediaPipe mengekstrak 21 titik landmark, dan algoritma KNN memprediksi huruf "L" dengan benar serta menampilkannya di layar. |
+| | BU-DET-03 | Deteksi huruf isyarat BISINDO dua tangan (misal: Huruf B) | Pengguna | Kamera mendeteksi kedua tangan secara simultan, mengekstrak landmark masing-masing tangan, dan KNN memprediksi huruf "B" dengan akurat. |
+| | BU-DET-04 | Penanganan kondisi tangan di luar area tangkapan kamera (*frame*) | Pengguna | Sistem mendeteksi ketiadaan objek tangan di depan kamera dan menampilkan indikator status "Tangan tidak terdeteksi". |
+| | BU-DET-05 | Penanganan tingkat kepercayaan (*confidence score*) di bawah ambang batas (*threshold*) | Pengguna | Sistem mendeteksi gestur tangan, namun jika tingkat kepercayaan klasifikasi di bawah batas minimum (misal: < 0.60), sistem tidak mencatat huruf tersebut sebagai huruf valid. |
+| | BU-DET-06 | Stabilisasi dan penguncian huruf hasil deteksi ke dalam kalimat | Pengguna | Sistem melakukan pemantauan stabilitas prediksi. Jika huruf yang diprediksi konsisten selama jumlah frame yang ditentukan (misal: 8 atau 20 frame), huruf dikunci, dimasukkan ke susunan kalimat, dan disimpan di riwayat Firestore (`history`). |
+| **Mode Latihan Interaktif** | BU-LAT-01 | Visualisasi grid huruf alfabet latihan A–Z | Pengguna | Halaman latihan menampilkan daftar huruf A-Z dengan perbedaan warna visual (misal: "Dikuasai" vs "Perlu latihan") berdasarkan metrik riwayat latihan pengguna sebelumnya. |
+| | BU-LAT-02 | Pemuatan modal referensi visual peragaan huruf | Pengguna | Saat tombol bantuan ditekan, sistem menampilkan visualisasi contoh gestur tangan BISINDO yang benar sesuai dengan huruf target dari berkas gambar lokal. |
+| | BU-LAT-03 | Peragaan gestur isyarat yang sesuai dengan huruf target latihan | Pengguna | Pengguna memperagakan gestur dengan benar sesuai target latihan, sistem memberikan umpan balik (feedback) visual "Benar", serta mencatatkan hasil sukses ke koleksi `training_sessions`. |
+| | BU-LAT-04 | Peragaan gestur isyarat yang tidak sesuai dengan huruf target latihan | Pengguna | Pengguna memperagakan gestur yang salah atau berbeda dari target latihan, sistem memberikan umpan balik visual "Salah", serta mencatatkan hasil gagal ke koleksi `training_sessions`. |
+| | BU-LAT-05 | Rekalkulasi berkala terhadap statistik performa pengguna | Pengguna | Sistem menghitung ulang total percobaan, akurasi rata-rata, serta daftar huruf terlemah/terkuat secara otomatis, lalu memperbarui dokumen `user_stats` di Firestore. |
+| **Riwayat dan Statistik** | BU-RWT-01 | Visualisasi grafik akurasi per kelas huruf dan frekuensi latihan | Pengguna | Tab statistik berhasil merender grafik batang (*bar chart*) performa huruf secara dinamis menggunakan pustaka Recharts bersumber dari data Firestore. |
+| | BU-RWT-02 | Pemuatan daftar riwayat deteksi kalimat dan detail sesi latihan | Pengguna | Tab riwayat berhasil memuat data histori deteksi kata serta log percobaan latihan secara lengkap dengan urutan teranyar (*descending*). |
+| **Keamanan & Performa (Non-Fungsional)** | BU-SEC-01 | Isolasi akses data privat antar-pengguna (*Firestore Security Rules*) | Pengguna A, Pengguna B | Firestore menolak secara langsung (*permission denied*) setiap upaya manipulasi atau kueri data koleksi milik Pengguna B oleh akun Pengguna A. |
+| | BU-PERF-01 | Mekanisme *local caching* data training KNN via IndexedDB | Pengguna | Sistem memuat data latih dari IndexedDB lokal pada pemuatan halaman berikutnya secara instan tanpa melakukan pengunduhan ulang berkas konfigurasi model (`model-pretrained.json`). |
+| | BU-PERF-02 | Dukungan pengerjaan modul deteksi secara luring (*offline-first*) | Pengguna | Seluruh modul deteksi (MediaPipe & KNN) berjalan normal tanpa internet. Data sinkronisasi Firestore disimpan secara lokal dan diperbarui ke cloud secara otomatis setelah koneksi kembali aktif. |
