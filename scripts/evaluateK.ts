@@ -10,17 +10,25 @@ interface EvalMetrics {
   f1: number;         // macro-average
 }
 
+interface PerClassMetric {
+  letter: string;
+  precision: number;
+  recall: number;
+  f1: number;
+  support: number;
+}
+
 function evaluateForK(
   classifier: KNNClassifier,
   testSamples: { features: number[]; label: string }[],
   k: number,
   classes: string[]
-): EvalMetrics {
+): { metrics: EvalMetrics; confusionMatrix: number[][]; perClassMetrics: PerClassMetric[] } {
   // Confusion matrix: confusion[actual][predicted] = count
   const confusion: Record<string, Record<string, number>> = {};
-  classes.forEach((c) => {
+  classes.forEach((c: string) => {
     confusion[c] = {};
-    classes.forEach((pred) => {
+    classes.forEach((pred: string) => {
       confusion[c][pred] = 0;
     });
   });
@@ -36,15 +44,18 @@ function evaluateForK(
   const precisions: number[] = [];
   const recalls: number[] = [];
   const f1s: number[] = [];
+  const perClassMetrics: PerClassMetric[] = [];
 
   for (const actual of classes) {
     let tp = confusion[actual][actual] || 0;
     let fn = 0;
     let fp = 0;
+    let support = 0;
 
     for (const predicted of classes) {
       const count = confusion[actual][predicted] || 0;
       total += count;
+      support += count;
       if (predicted === actual) {
         correct += count;
       } else {
@@ -65,14 +76,31 @@ function evaluateForK(
     precisions.push(precision);
     recalls.push(recall);
     f1s.push(f1);
+
+    perClassMetrics.push({
+      letter: actual,
+      precision: +precision.toFixed(4),
+      recall: +recall.toFixed(4),
+      f1: +f1.toFixed(4),
+      support,
+    });
   }
 
+  // Build numeric confusion matrix (26×26)
+  const confusionMatrix = classes.map((actual: string) =>
+    classes.map((predicted: string) => confusion[actual][predicted] || 0)
+  );
+
   return {
-    k,
-    accuracy: correct / total,
-    precision: precisions.reduce((a, b) => a + b, 0) / precisions.length,
-    recall: recalls.reduce((a, b) => a + b, 0) / recalls.length,
-    f1: f1s.reduce((a, b) => a + b, 0) / f1s.length,
+    metrics: {
+      k,
+      accuracy: correct / total,
+      precision: precisions.reduce((a, b) => a + b, 0) / precisions.length,
+      recall: recalls.reduce((a, b) => a + b, 0) / recalls.length,
+      f1: f1s.reduce((a, b) => a + b, 0) / f1s.length,
+    },
+    confusionMatrix,
+    perClassMetrics,
   };
 }
 
@@ -135,14 +163,33 @@ function main() {
 
   const kValues = [1, 3, 5, 7, 9];
   const results: EvalMetrics[] = [];
+  let bestConfusionMatrix: number[][] = [];
+  let bestPerClassMetrics: PerClassMetric[] = [];
 
   console.log("\nEvaluating K values...");
   for (const k of kValues) {
     const start = Date.now();
-    const metrics = evaluateForK(classifier, testSamples, k, classes);
+    const { metrics, confusionMatrix, perClassMetrics } = evaluateForK(classifier, testSamples, k, classes);
     const duration = Date.now() - start;
     console.log(`K = ${k} evaluated in ${duration}ms.`);
     results.push(metrics);
+
+    // Save confusion matrix and per-class metrics for the best K
+    if (k === 3) {
+      bestConfusionMatrix = confusionMatrix;
+      bestPerClassMetrics = perClassMetrics;
+    }
+  }
+
+  // Determine best K by highest accuracy
+  const bestResult = results.reduce((best, curr) => curr.accuracy > best.accuracy ? curr : best, results[0]);
+  const bestK = bestResult.k;
+
+  // If best K is not 3, re-evaluate for the actual best K
+  if (bestK !== 3) {
+    const { confusionMatrix, perClassMetrics } = evaluateForK(classifier, testSamples, bestK, classes);
+    bestConfusionMatrix = confusionMatrix;
+    bestPerClassMetrics = perClassMetrics;
   }
 
   console.log("\n### KNN Evaluation Results ###\n");
@@ -154,28 +201,13 @@ function main() {
     );
   }
 
-  // Find most confused pairs for K = 5 (or the best K)
-  const bestK = 5; // standard K
+  // Print most confused pairs
   console.log(`\n### Top Confused Pairs for K = ${bestK} ###`);
-  const confusion: Record<string, Record<string, number>> = {};
-  classes.forEach((c: string) => {
-    confusion[c] = {};
-    classes.forEach((pred: string) => {
-      confusion[c][pred] = 0;
-    });
-  });
-
-  for (const sample of testSamples) {
-    const result = classifier.predict(sample.features, bestK);
-    confusion[sample.label][result.label] = (confusion[sample.label][result.label] || 0) + 1;
-  }
-
   const pairs: { actual: string; predicted: string; count: number }[] = [];
-  for (const actual of classes) {
-    for (const predicted of classes) {
-      const count = confusion[actual][predicted] || 0;
-      if (actual !== predicted && count > 0) {
-        pairs.push({ actual, predicted, count });
+  for (let i = 0; i < classes.length; i++) {
+    for (let j = 0; j < classes.length; j++) {
+      if (i !== j && bestConfusionMatrix[i][j] > 0) {
+        pairs.push({ actual: classes[i], predicted: classes[j], count: bestConfusionMatrix[i][j] });
       }
     }
   }
@@ -186,6 +218,32 @@ function main() {
   pairs.slice(0, 10).forEach((p) => {
     console.log(`| ${p.actual}             | ${p.predicted}                    | ${p.count}     |`);
   });
+
+  // ===== Write evaluation data into model-pretrained.json =====
+  const evaluation = {
+    best_k: bestK,
+    k_comparison: results.map((r) => ({
+      k: r.k,
+      accuracy: +r.accuracy.toFixed(4),
+      precision: +r.precision.toFixed(4),
+      recall: +r.recall.toFixed(4),
+      f1: +r.f1.toFixed(4),
+    })),
+    confusion_matrix: bestConfusionMatrix,
+    per_class_metrics: bestPerClassMetrics,
+    total_train_samples: trainSamples.length,
+    total_test_samples: testSamples.length,
+    evaluated_at: new Date().toISOString().split("T")[0],
+  };
+
+  // Merge evaluation into existing data
+  data.evaluation = evaluation;
+
+  const outputPath = path.join(__dirname, "../public/model-pretrained.json");
+  console.log(`\nWriting evaluation data to ${outputPath}...`);
+  fs.writeFileSync(outputPath, JSON.stringify(data));
+  console.log("✅ Evaluation data has been written to model-pretrained.json!");
+  console.log(`   Best K: ${bestK} (Accuracy: ${(bestResult.accuracy * 100).toFixed(2)}%)`);
 }
 
 main();

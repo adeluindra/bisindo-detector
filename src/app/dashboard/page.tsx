@@ -77,6 +77,14 @@ export default function DashboardPage() {
       href: "/history",
       color: "pink",
     },
+    {
+      title: "Evaluasi Model",
+      description: "Lihat performa model KNN: perbandingan nilai K, confusion matrix, dan akurasi per huruf BISINDO.",
+      icon: "🧪",
+      action: "Lihat Evaluasi",
+      href: "/model-evaluation",
+      color: "teal",
+    },
   ] as const;
 
   const colorMap = {
@@ -97,6 +105,12 @@ export default function DashboardPage() {
       titleHover: "group-hover:text-pink-300",
       linkColor: "text-pink-400",
       borderHover: "hover:border-pink-500/30 hover:shadow-pink-500/5",
+    },
+    teal: {
+      iconBg: "bg-teal-500/10 group-hover:bg-teal-500/20 border-teal-500/10",
+      titleHover: "group-hover:text-teal-300",
+      linkColor: "text-teal-400",
+      borderHover: "hover:border-teal-500/30 hover:shadow-teal-500/5",
     },
   };
 
@@ -170,7 +184,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Feature Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
           {features.map((feature) => {
             const colors = colorMap[feature.color];
             return (
